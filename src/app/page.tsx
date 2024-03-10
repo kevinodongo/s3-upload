@@ -1,113 +1,329 @@
-import Image from "next/image";
+"use client";
+import AWS from "aws-sdk";
+import toast, { Toaster } from "react-hot-toast";
+import { Listbox, Transition } from "@headlessui/react";
+import { PaperClipIcon } from "@heroicons/react/24/solid";
+import { ChevronUpDownIcon } from "@heroicons/react/20/solid";
+import { ChangeEvent, Fragment, useState, useRef } from "react";
+
+AWS.config.update({
+  region: "us-east-1",
+  credentials: {
+    accessKeyId: "",
+    secretAccessKey: "",
+  },
+});
+
+const bucketName = "";
+
+interface BranchType {
+  id: number;
+  name: string;
+}
+
+interface CompanyType extends BranchType {
+  branches: BranchType[];
+}
+
+interface CountryType extends BranchType {
+  businesses: CountryType[];
+}
+
+const DATA = [
+  {
+    id: 1,
+    name: "Kenya",
+    businesses: [
+      { id: 1, name: "Zillow", branches: [{ id: 2, name: "Nairobi" }] },
+      {
+        id: 2,
+        name: "Car 24",
+        branches: [
+          { id: 1, name: "Nairobi" },
+          { id: 2, name: "Nakuru" },
+        ],
+      },
+    ],
+  },
+  {
+    id: 2,
+    name: "Uganda",
+    businesses: [
+      {
+        id: 1,
+        name: "Zillow",
+        branches: [
+          { id: 1, name: "Kampala" },
+          { id: 2, name: "Tororo" },
+          { id: 3, name: "Jinja" },
+        ],
+      },
+      { id: 2, name: "Olx", branches: [{ id: 1, name: "Kampala" }] },
+    ],
+  },
+];
+
+function classNames(...classes: any) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export default function Home() {
+  const [selectedCountry, setSelectedCountry] = useState<CountryType | null>(
+    null
+  );
+  const [selectedCompany, setSelectedCompany] = useState<CompanyType | null>(
+    null
+  );
+  const [selectedBranch, setSelectedBranch] = useState<BranchType | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      const results = Array.from(files);
+      setSelectedFiles([...selectedFiles, ...results]);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const removeFile = (index: number) => {
+    const updatedFiles = [...selectedFiles];
+    updatedFiles.splice(index, 1);
+    setSelectedFiles(updatedFiles);
+  };
+
+  const submitForm = async () => {
+    if (selectedFiles.length === 0 || !selectedCountry || !selectedCompany) {
+      if (selectedFiles.length === 0) {
+        toast.error("Please select files to upload.");
+      }
+      if (!selectedCountry) {
+        toast.error("Please select a country");
+      }
+      if (!selectedCompany) {
+        toast.error("Please select a company");
+      }
+      return;
+    }
+
+    await Promise.all(
+      selectedFiles.map(async (file) => {
+        const fileName = `${encodeURIComponent(
+          selectedCountry?.name
+        )}/${encodeURIComponent(selectedCompany?.name)}${
+          selectedBranch ? `/${encodeURIComponent(selectedBranch.name)}` : ""
+        }/${encodeURIComponent(file.name)}`;
+        const params = {
+          Bucket: bucketName,
+          Key: fileName,
+          Body: file,
+        };
+        await toast.promise(uploadToS3(params), {
+          loading: "Uploading files...",
+          success: "File uploaded successfully!",
+          error: "Error uploading file",
+        });
+      })
+    );
+
+    resetFields();
+  };
+
+  const resetFields = () => {
+    setSelectedCountry(null);
+    setSelectedCompany(null);
+    setSelectedBranch(null);
+    setSelectedFiles([]);
+  };
+
+  const uploadToS3 = (params: any) => {
+    return new Promise<void>((resolve, reject) => {
+      var upload = new AWS.S3.ManagedUpload({
+        params: params,
+      });
+
+      const promise = upload.promise();
+      promise.then(
+        function (data) {
+          resolve();
+        },
+        function (err) {
+          reject(new Error(err));
+        }
+      );
+    });
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+    <>
+      <Toaster />
+      <div className="flex h-screen flex-1 items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-10 bg-white p-10 rounded-xl shadow">
+          <form className="space-y-6" action="#" method="POST">
+            <div>
+              <DropDown
+                title="Country"
+                items={DATA}
+                selected={selectedCountry}
+                setSelected={setSelectedCountry}
+              />
+            </div>
+            {selectedCountry && (
+              <div>
+                <DropDown
+                  title="Business / Company"
+                  items={selectedCountry.businesses}
+                  selected={selectedCompany}
+                  setSelected={setSelectedCompany}
+                />
+              </div>
+            )}
+            {selectedCompany && (
+              <div>
+                <DropDown
+                  title="Branches"
+                  items={selectedCompany.branches}
+                  selected={selectedBranch}
+                  setSelected={setSelectedBranch}
+                />
+              </div>
+            )}
+
+            {selectedFiles.length > 0 && (
+              <ul
+                role="list"
+                className="divide-y divide-gray-100 rounded-md border border-gray-200"
+              >
+                {selectedFiles.map((file, index) => (
+                  <li
+                    key={index}
+                    className="flex items-center justify-between py-4 pl-4 pr-5 text-sm leading-6"
+                  >
+                    <div className="flex w-0 flex-1 items-center">
+                      <PaperClipIcon
+                        className="h-5 w-5 flex-shrink-0 text-gray-400"
+                        aria-hidden="true"
+                      />
+                      <div className="ml-4 flex min-w-0 flex-1 gap-2">
+                        <span className="truncate font-medium">
+                          {file.name}
+                        </span>
+                        <span className="flex-shrink-0 text-gray-400">
+                          {file.size}mb
+                        </span>
+                      </div>
+                    </div>
+                    <div className="ml-4 flex-shrink-0">
+                      <a
+                        onClick={() => removeFile(index)}
+                        className="font-medium cursor-pointer text-red-600 hover:text-red-500"
+                      >
+                        Remove
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div>
+              <input
+                multiple
+                ref={fileInputRef}
+                onChange={handleFileInputChange}
+                className="relative m-0 block w-full min-w-0 flex-auto cursor-pointer rounded-md border border-solid border-secondary-500 bg-transparent bg-clip-padding px-3 py-[0.32rem] text-sm font-normal leading-[2.15] text-surface transition duration-300 ease-in-out file:-mx-3 file:-my-[0.32rem] file:me-3 file:cursor-pointer file:overflow-hidden file:rounded-none file:border-0 file:border-e file:border-solid file:border-inherit file:bg-transparent file:px-3  file:py-[0.32rem] file:text-surface focus:border-primary focus:text-gray-700 focus:shadow-inset focus:outline-none dark:border-white/70 dark:text-white  file:dark:text-white"
+                aria-describedby="file_input_help"
+                id="file_input"
+                type="file"
+              />
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={submitForm}
+                className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2.5 text-sm font-semibold leading-6 text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
         </div>
       </div>
+    </>
+  );
+}
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-full sm:before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full sm:after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+interface DropDownProps {
+  title: string;
+  items: any[];
+  selected: any;
+  setSelected: (value: any) => void;
+}
 
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
+function DropDown({ title, items, selected, setSelected }: DropDownProps) {
+  return (
+    <Listbox value={selected} onChange={setSelected}>
+      {({ open }) => (
+        <>
+          <Listbox.Label className="block text-sm font-medium leading-6 text-gray-900">
+            {title}
+          </Listbox.Label>
+          <div className="relative mt-2">
+            <Listbox.Button className="relative w-full cursor-default rounded-md bg-white py-1.5 pl-3 pr-10 text-left text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+              <span className="block truncate">
+                {selected ? selected.name : "-- Please choose an option --"}
+              </span>
+              <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <ChevronUpDownIcon
+                  className="h-5 w-5 text-gray-400"
+                  aria-hidden="true"
+                />
+              </span>
+            </Listbox.Button>
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50 text-balance`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+            <Transition
+              show={open}
+              as={Fragment}
+              leave="transition ease-in duration-100"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+                {items.map((item) => (
+                  <Listbox.Option
+                    key={item.id}
+                    className={({ active }) =>
+                      classNames(
+                        active ? "bg-indigo-600 text-white" : "text-gray-900",
+                        "relative cursor-default select-none py-2 pl-3 pr-9"
+                      )
+                    }
+                    value={item}
+                  >
+                    {({ selected, active }) => (
+                      <>
+                        <span
+                          className={classNames(
+                            selected ? "font-semibold" : "font-normal",
+                            "block truncate"
+                          )}
+                        >
+                          {item?.name}
+                        </span>
+                      </>
+                    )}
+                  </Listbox.Option>
+                ))}
+              </Listbox.Options>
+            </Transition>
+          </div>
+        </>
+      )}
+    </Listbox>
   );
 }
